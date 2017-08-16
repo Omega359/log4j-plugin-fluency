@@ -11,6 +11,7 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.pattern.NameAbbreviator;
 import org.apache.logging.log4j.core.util.Booleans;
 import org.apache.logging.log4j.status.StatusLogger;
+import org.komamitsu.fluency.EventTime;
 import org.komamitsu.fluency.Fluency;
 
 import java.io.IOException;
@@ -37,15 +38,17 @@ public final class FluencyAppender extends AbstractAppender {
     private Fluency fluency;
     private Map<String, Object> parameters;
     private Map<String, String> staticFields;
+    private String[] mdcFields;
 
     private FluencyAppender(final String name, final Map<String, Object> parameters, final Map<String, String> staticFields,
-                            final Server[] servers, final FluencyConfig fluencyConfig, final Filter filter,
+                            final String mdcField, final Server[] servers, final FluencyConfig fluencyConfig, final Filter filter,
                             final Layout<? extends Serializable> layout, final boolean ignoreExceptions) {
 
         super(name, filter, layout, ignoreExceptions);
 
         this.parameters = parameters;
         this.staticFields = staticFields;
+        this.mdcFields = mdcField == null ? null : mdcField.split(",");
 
         try {
             this.fluency = makeFluency(servers, fluencyConfig);
@@ -73,6 +76,7 @@ public final class FluencyAppender extends AbstractAppender {
     public static FluencyAppender createAppender(@PluginAttribute("name") final String name,
                                                  @PluginAttribute("tag") final String tag,
                                                  @PluginAttribute("application") final String application,
+                                                 @PluginAttribute("mdcField") final String mdcField,
                                                  @PluginAttribute("ignoreExceptions") final String ignore,
                                                  @PluginElement("StaticField") final StaticField[] staticFields,
                                                  @PluginElement("Server") final Server[] servers,
@@ -113,7 +117,7 @@ public final class FluencyAppender extends AbstractAppender {
             layout = PatternLayout.createDefaultLayout();
         }
 
-        return new FluencyAppender(name, parameters, fields, servers, fluencyConfig, filter,
+        return new FluencyAppender(name, parameters, fields, mdcField, servers, fluencyConfig, filter,
                 layout, ignoreExceptions);
     }
 
@@ -158,27 +162,19 @@ public final class FluencyAppender extends AbstractAppender {
 
         StackTraceElement logSource = logEvent.getSource();
 
-        if (logSource == null || logSource.getFileName() == null) {
-            m.put("sourceFile", "<unknown>");
-        } else {
+        if (logSource != null && logSource.getFileName() != null) {
             m.put("sourceFile", logSource.getFileName());
         }
 
-        if (logSource == null || logSource.getClassName() == null) {
-            m.put("sourceClass", "<unknown>");
-        } else {
+        if (logSource != null && logSource.getClassName() != null) {
             m.put("sourceClass", logEvent.getSource().getClassName());
         }
 
-        if (logSource == null || logSource.getMethodName() == null) {
-            m.put("sourceMethod", "<unknown>");
-        } else {
+        if (logSource != null && logSource.getMethodName() != null) {
             m.put("sourceMethod", logEvent.getSource().getMethodName());
         }
 
-        if (logSource == null || logSource.getLineNumber() == 0) {
-            m.put("sourceLine", 0);
-        } else {
+        if (logSource != null && logSource.getLineNumber() != 0) {
             m.put("sourceLine", logEvent.getSource().getLineNumber());
         }
 
@@ -199,6 +195,15 @@ public final class FluencyAppender extends AbstractAppender {
         m.put("thread", logEvent.getThreadName());
         m.putAll(this.staticFields);
 
+        if (mdcFields != null && mdcFields.length != 0) {
+            for (String mdcField : mdcFields) {
+                String val = logEvent.getContextMap().get(mdcField.trim());
+                if (val != null && "".equals(val.trim())) {
+                    m.put(mdcField, val);
+                }
+            }
+        }
+        
         // TODO: get rid of that, once the whole stack supports subsecond timestamps
         // this is just a workaround due to the lack of support
         m.put("@timestamp", format.format(eventTime));
@@ -207,7 +212,7 @@ public final class FluencyAppender extends AbstractAppender {
             try {
                 // the tag is required for further processing within fluentd,
                 // otherwise we would have no way to manipulate messages in transit
-                this.fluency.emit((String) parameters.get("tag"), logEvent.getTimeMillis(), m);
+                this.fluency.emit((String) parameters.get("tag"), EventTime.fromEpochMilli(logEvent.getTimeMillis()), m);
             } catch (IOException e) {
                 LOG.error(e.getMessage());
             }
