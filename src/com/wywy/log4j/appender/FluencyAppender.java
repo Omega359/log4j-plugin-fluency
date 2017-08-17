@@ -11,7 +11,6 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.pattern.NameAbbreviator;
 import org.apache.logging.log4j.core.util.Booleans;
 import org.apache.logging.log4j.status.StatusLogger;
-import org.komamitsu.fluency.EventTime;
 import org.komamitsu.fluency.Fluency;
 
 import java.io.IOException;
@@ -197,9 +196,9 @@ public final class FluencyAppender extends AbstractAppender {
 
         if (mdcFields != null && mdcFields.length != 0) {
             for (String mdcField : mdcFields) {
-                String val = logEvent.getContextMap().get(mdcField.trim());
-                if (val != null && "".equals(val.trim())) {
-                    m.put(mdcField, val);
+                String val = logEvent.getContextData().toMap().get(mdcField.trim());
+                if (val != null && !"".equals(val.trim())) {
+                    m.put(mdcField.trim(), val.trim());
                 }
             }
         }
@@ -212,7 +211,7 @@ public final class FluencyAppender extends AbstractAppender {
             try {
                 // the tag is required for further processing within fluentd,
                 // otherwise we would have no way to manipulate messages in transit
-                this.fluency.emit((String) parameters.get("tag"), EventTime.fromEpochMilli(logEvent.getTimeMillis()), m);
+                this.fluency.emit((String) parameters.get("tag"), logEvent.getTimeMillis() / 1000, m);
             } catch (IOException e) {
                 LOG.error(e.getMessage());
             }
