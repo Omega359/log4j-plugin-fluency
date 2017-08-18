@@ -154,7 +154,6 @@ public final class FluencyAppender extends AbstractAppender {
         String level = logEvent.getLevel().name();
         String loggerName = logEvent.getLoggerName();
         String message = new String(this.getLayout().toByteArray(logEvent));
-        Date eventTime = new Date(logEvent.getTimeMillis());
 
         Map<String, Object> m = new HashMap<>();
         m.put("level", level);
@@ -205,7 +204,7 @@ public final class FluencyAppender extends AbstractAppender {
         
         // TODO: get rid of that, once the whole stack supports subsecond timestamps
         // this is just a workaround due to the lack of support
-        m.put("@timestamp", format.format(eventTime));
+        m.put("@timestamp", "" + logEvent.getTimeMillis());
 
         if (this.fluency != null) {
             try {
